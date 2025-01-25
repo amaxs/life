@@ -35,7 +35,14 @@ class DBHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT,
         description TEXT,
-        xp INTEGER,
+        theme TEXT,
+        xp REAL,
+        strengthXP REAL,
+        intelligenceXP REAL,
+        dexterityXP REAL,
+        creativityXP REAL,
+        staminaXP REAL,
+        charismaXP REAL,
         coins INTEGER,
         isDaily INTEGER,
         isCompleted INTEGER,
@@ -48,7 +55,13 @@ class DBHelper {
       CREATE TABLE user_profile (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         level INTEGER,
-        xp INTEGER,
+        xp REAL,
+        strengthXP REAL,
+        intelligenceXP REAL,
+        dexterityXP REAL,
+        creativityXP REAL,
+        staminaXP REAL,
+        charismaXP REAL,
         coins INTEGER
       )
     ''');

@@ -10,15 +10,17 @@ import 'add_quest_screen.dart';
 import 'shop_screen.dart';
 import 'inventory_screen.dart';
 import '../theme.dart';
+import 'xp_graph.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
   _HomeScreenState createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   late Future<UserProfile> userProfile;
   late Future<List<Quest>> quests;
+  late AnimationController _controller;
 
   @override
   void initState() {
@@ -27,6 +29,18 @@ class _HomeScreenState extends State<HomeScreen> {
     userService.initUser();
     userProfile = userService.getUserProfile();
     _refreshQuests();
+
+    // Set up the animation controller
+    _controller = AnimationController(
+      duration: const Duration(seconds: 10),
+      vsync: this,
+    )..repeat(); // Infinite loop
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   void _refreshQuests() {
@@ -55,8 +69,35 @@ class _HomeScreenState extends State<HomeScreen> {
     final questService = Provider.of<QuestService>(context, listen: false);
     final userService = Provider.of<UserService>(context, listen: false);
 
+    // Prevent multiple executions
+    if (quest.isCompleted) {
+      print("Quest is already completed.");
+      return;
+    }
+
     quest.isCompleted = true;
     await questService.updateQuest(quest);
+
+    // Fetch and update the user profile
+    UserProfile updatedUserProfile = await userService.getUserProfile();
+    updatedUserProfile.addXP(
+      strength: quest.strengthXP,
+      intelligence: quest.intelligenceXP,
+      dexterity: quest.dexterityXP,
+      creativity: quest.creativityXP,
+      stamina: quest.staminaXP,
+      charisma: quest.charismaXP,
+    );
+
+    updatedUserProfile.coins += quest.coins;
+    updatedUserProfile.checkLevelUp();
+    await userService.updateUserProfile(updatedUserProfile);
+
+    setState(() {
+      this.userProfile = userService.getUserProfile();
+      _refreshQuests();
+    });
+
 
     NotificationService().showNotification(
       quest.id!,
@@ -64,7 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
       'You have completed the quest: ${quest.title}',
     );
 
-    await userService.addXp(quest.xp);
+    // await userService.addXP(quest.strengthXP, quest.intelligenceXP, quest.dexterityXP, quest.creativityXP, quest.staminaXP, quest.charismaXP);
 
     final updatedUser = await userService.getUserProfile();
     updatedUser.coins += quest.coins;
@@ -95,7 +136,7 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Text(quest.description, style: GameTheme.subtitleStyle),
                 SizedBox(height: 10),
-                Text('XP: ${quest.xp}', style: GameTheme.subtitleStyle),
+                // Text('XP: ${quest.xp}', style: GameTheme.subtitleStyle),
                 Text('Coins: ${quest.coins}', style: GameTheme.subtitleStyle),
               ],
             ),
@@ -144,37 +185,61 @@ class _HomeScreenState extends State<HomeScreen> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
           } else if (snapshot.hasError) {
+            print('Error loading user profile: ${snapshot.error}');
             return Center(child: Text('Error: ${snapshot.error}', style: GameTheme.subtitleStyle));
           } else if (!snapshot.hasData) {
+            print('No user profile data');
             return Center(child: Text('No user profile data', style: GameTheme.subtitleStyle));
           }
 
           final user = snapshot.data!;
-          print('User profile loaded: ${user.level}, ${user.xp}, ${user.coins}');  // Debug print
+          print('User profile loaded: ${user.level}, ${user.xp}, ${user.coins}, ${user.strengthXP}');
 
           return SingleChildScrollView(
             child: Column(
+              // alignment: Alignment.center,
               children: [
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
+                Stack(
+                    alignment: Alignment.center,
                     children: [
-                      Container(
-                        decoration: GameTheme.containerDecoration,
+                      // Square halo effect
+                      CustomPaint(
+                        painter: SquareHaloPainter(_controller),
+                        size: Size(270, 270),
+                      ),
+                      Padding(
                         padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          children: [
-                            Text('STATUS', style: GameTheme.titleStyle),
-                            SizedBox(height: 10),
-                            Text('Level: ${user.level}', style: GameTheme.subtitleStyle),
-                            Text('XP: ${user.xp}', style: GameTheme.subtitleStyle),
-                            Text('Coins: ${user.coins}', style: GameTheme.subtitleStyle),
-                            Text('XP for next level: ${user.xpForNextLevel()}', style: GameTheme.subtitleStyle),
-                          ],
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => XPGraphScreen()),
+                            );
+                          },
+                          child: Container(
+                            width: 250,
+                            height: 250,
+                            decoration: BoxDecoration(
+                              color: GameTheme.secondaryColor,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Text('STATUS', style: GameTheme.titleStyle),
+                                SizedBox(height: 10),
+                                Text('Level: ${user.level}', style: GameTheme.subtitleStyle),
+                                Text('XP: ${user.xp.toStringAsFixed(1)}', style: GameTheme.subtitleStyle), // Rounds to 1 decimal place
+                                Text('Coins: ${user.coins}', style: GameTheme.subtitleStyle),
+                                Text('XP to Next Level: ${(user.xpForNextLevel() - user.xp).toStringAsFixed(1)}', style: GameTheme.subtitleStyle), // Displays remaining XP
+                              ],
+                            ),
+                          ),
                         ),
                       ),
-                    ],
-                  ),
+                    ]
                 ),
                 Padding(
                   padding: const EdgeInsets.all(16.0),
@@ -186,14 +251,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return Center(child: CircularProgressIndicator());
                     } else if (snapshot.hasError) {
+                      print('Error loading quests: ${snapshot.error}');
                       return Center(child: Text('Error: ${snapshot.error}', style: GameTheme.subtitleStyle));
                     } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      print('No quests available');
                       return Center(child: Text('No quests available', style: GameTheme.subtitleStyle));
                     }
 
                     final quests = snapshot.data!;
                     final inProgressQuests = quests.where((quest) => !quest.isCompleted).toList();
-                    print('In progress quests: ${inProgressQuests.length}');  // Debug print
+                    print('In progress quests: ${inProgressQuests.length}');
 
                     return ListView.builder(
                       padding: const EdgeInsets.all(16.0),
@@ -202,6 +269,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       itemCount: inProgressQuests.length,
                       itemBuilder: (context, index) {
                         final quest = inProgressQuests[index];
+                        print('Rendering quest: ${quest.title}');  // Debug print to ensure rendering
                         return GestureDetector(
                           onTap: () => _showQuestDetails(context, quest),
                           child: Container(
@@ -222,16 +290,19 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       floatingActionButton: SpeedDial(
         animatedIcon: AnimatedIcons.menu_close,
-        backgroundColor: GameTheme.accentColor,
+        animatedIconTheme: const IconThemeData(color: Colors.white), // Set the color of the animated icon to white
+        backgroundColor: GameTheme.secondaryColor,
+        overlayColor: Colors.transparent, // Set this to transparent to remove the overlay
+        overlayOpacity: 0.0, // Ensure the overlay is completely invisible
         children: [
           SpeedDialChild(
             child: Icon(Icons.list, color: Colors.white),
             label: 'Quests',
-            backgroundColor: GameTheme.highlightColor,
+            backgroundColor: GameTheme.accentColor,
             onTap: () async {
               final result = await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => AddQuestScreen()),
+                MaterialPageRoute(builder:(context) => AddQuestScreen()),
               );
               if (result == true) {
                 _refreshQuests();  // Refresh quests when a new quest is added
@@ -241,7 +312,7 @@ class _HomeScreenState extends State<HomeScreen> {
           SpeedDialChild(
             child: Icon(Icons.shop, color: Colors.white),
             label: 'Shop',
-            backgroundColor: GameTheme.highlightColor,
+            backgroundColor: GameTheme.accentColor,
             onTap: () {
               Navigator.push(
                 context,
@@ -252,7 +323,7 @@ class _HomeScreenState extends State<HomeScreen> {
           SpeedDialChild(
             child: Icon(Icons.inventory, color: Colors.white),
             label: 'Inventory',
-            backgroundColor: GameTheme.highlightColor,
+            backgroundColor: GameTheme.accentColor,
             onTap: () {
               Navigator.push(
                 context,

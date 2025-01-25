@@ -24,6 +24,7 @@ class QuestService {
   Future<List<Quest>> getAllActiveQuests() async {
     final db = await DBHelper().database;
     final List<Map<String, dynamic>> maps = await db.query('quests', where: 'isAvailable = 0 AND isCompleted = 0');
+    print('Fetched ${maps.length} active quests from database.');  // Debug print
     return List.generate(maps.length, (i) => Quest.fromMap(maps[i]));
   }
 
